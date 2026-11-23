@@ -15,17 +15,21 @@ def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
-        page.goto(TARGET_URL, wait_until="networkidle", timeout=30000)
-        page.wait_for_selector('a[href*="/tw/news/"]', timeout=15000)
+        page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=30000)
+        # 只要 HTML 載入出公告連結就立刻抓取，不再等待隱藏元素變可見
+        page.wait_for_selector('a[href*="/tw/news/"]', state="attached", timeout=20000)
+        page.wait_for_timeout(2000)  # 緩衝 2 秒確保所有標題渲染完成
+        
         for link in page.query_selector_all('a[href*="/tw/news/"]'):
             href = link.get_attribute("href")
             if href and href != "/tw/news" and "/tw/news/" in href:
                 url = f"https://artale.live{href}" if href.startswith("/") else href
-                title = " ".join(link.inner_text().split())
+                title = " ".join((link.text_content() or "").split())
                 if title and url not in [a["url"] for a in articles]:
                     articles.append({"title": title, "url": url})
         browser.close()
 
+    print(f"成功抓取到 {len(articles)} 篇公告")
     updated = False
     for art in reversed(articles):
         if art["url"] not in seen:
